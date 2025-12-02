@@ -1,4 +1,5 @@
-import { Body, Controller, Post, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Post, UnauthorizedException, BadRequestException, Get, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import { SignInUserDTO } from './dto/sign-in-user.dto';
 import { CreateUserDTO } from './dto/create-user.dto';
@@ -43,6 +44,37 @@ export class AuthController {
                 createUserDto.password,
                 createUserDto.fullName,
             );
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            throw new BadRequestException(message);
+        }
+    }
+
+    @Get('auth-redirect')
+    async authRedirect(@Query('accessToken') accessToken: string) {
+        try {
+            return this.authService.redirectSuccessfulRegistration(accessToken);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            throw new BadRequestException(message);
+        }
+    }
+
+    @Post('store-tokens')
+    async storeTokens(
+        @Body() tokens: { access_token: string; refresh_token: string; expires_in: string; token_type: string },
+        @Res({ passthrough: true }) response: Response
+    ) {
+        try {
+            // Ask service/provider to produce cookie metadata and then set it on the response.
+            const cookieMeta = await this.authService.storeTokens(tokens);
+            if (cookieMeta && (cookieMeta as any).name) {
+                // Use Express's res.cookie helper to set an HttpOnly cookie.
+                response.cookie((cookieMeta as any).name, (cookieMeta as any).value, (cookieMeta as any).options);
+                return response.json({ ok: true });
+            }
+            // If no cookie metadata was returned, still respond success but do nothing.
+            return response.json({ ok: false, message: 'No cookie metadata returned' });
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
             throw new BadRequestException(message);

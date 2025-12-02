@@ -6,6 +6,7 @@ export interface AuthSignInMethodResult {
     // returned (commonly because the project requires email confirmation).
     // Optional so existing callers remain compatible.
     needsConfirmation?: boolean;
+    message?: string;
 }
 
 export abstract class AuthSignInMethods {

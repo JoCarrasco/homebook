@@ -36,6 +36,8 @@ export class SupabaseAuthCoreProvider extends AuthCoreIdentityProviderBase {
     constructor(
         private readonly supabaseUrl: string,
         private readonly supabaseAnonKey: string,
+        private readonly emailOtpExpirationSeconds: number,
+        private readonly emailOtpLength: number,
         client?: ISupabaseClient, // optional injection for tests
     ) {
         super();
@@ -70,6 +72,7 @@ export class SupabaseAuthCoreProvider extends AuthCoreIdentityProviderBase {
                     token: data.session.access_token,
                     expiresIn: data.session.expires_in || 0,
                     needsConfirmation: false,
+                    message: `User registered successfully, please check your email for confirmation link, it must have been sent to ${email}`,
                 };
             }
 
@@ -124,6 +127,12 @@ export class SupabaseAuthCoreProvider extends AuthCoreIdentityProviderBase {
         }
     }
 
+    async activateUserWithEmailToken(_token: string): Promise<void> {
+        // Supabase automatically handles email token activation via link;
+        // no action needed here.
+        return;
+    }
+
     /**
      * Returns true when token appears valid. Does not throw for client errors; returns false instead.
      */
@@ -173,5 +182,42 @@ export class SupabaseAuthCoreProvider extends AuthCoreIdentityProviderBase {
             if (err instanceof Error) throw err;
             throw new Error(String(err));
         }
+    }
+
+    async storeTokensInHttpOnlyCookie(tokens: { access_token: string; refresh_token: string; expires_in: string; token_type: string }): Promise<{ name: string; value: string; options: Record<string, any>; }> {
+        // Check the token in Supabase to ensure it's valid before storing
+        const isValid = await this.validateToken(tokens.access_token);
+        if (!isValid) {
+            throw new Error('Cannot store tokens: access token is invalid');
+        }
+        // Build a cookie-safe representation of the tokens. We encode the minimal
+        // required fields as a base64 JSON string so the client cannot access it
+        // via JavaScript (cookie is httpOnly) and the backend can decode it later.
+        const payload = {
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token,
+            token_type: tokens.token_type,
+        };
+
+        const cookieValue = Buffer.from(JSON.stringify(payload)).toString('base64');
+
+        // Calculate maxAge in milliseconds from expires_in which Supabase provides in seconds
+        const expiresSeconds = parseInt(tokens.expires_in as unknown as string, 10) || 0;
+        const maxAgeMs = expiresSeconds > 0 ? expiresSeconds * 1000 : undefined;
+
+        // Return an object describing the cookie to set. The controller or service
+        // that calls this method is responsible for actually setting the Set-Cookie
+        // header on the HTTP response using the returned metadata.
+        return {
+            name: 'homs_auth_session',
+            value: cookieValue,
+            options: {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'lax',
+                path: '/',
+                maxAge: maxAgeMs,
+            },
+        };
     }
 }
