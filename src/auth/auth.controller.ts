@@ -7,18 +7,7 @@ import { CreateUserDTO } from './dto/create-user.dto';
 @Controller('auth')
 export class AuthController {
     constructor(private readonly authService: AuthService) {}
-    // NOTE(future): Implement the methods using the DTOs for validation
-    // @Post('admin-login')
-    // adminLogin() {
-    //
-    // }
-
-    // // NOTE(future): Implement the methods using the DTOs for validation
-    // @Post('admin-register')
-    // adminRegister() {
-    //
-    // }
-
+    
     @Post('login')
     async login(@Body() signInUserDto: SignInUserDTO) {
         try {
